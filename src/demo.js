@@ -2,18 +2,15 @@
 import { Badge } from 'antd';
 import React, { useEffect, useState } from 'react';
 import {
-  Attachments,
   Bubble,
   Conversations,
   Prompts,
   Sender,
   Welcome,
-  useXAgent,
-  useXChat,
 } from '@ant-design/x';
 import { createStyles } from 'antd-style';
 import { Button, Space } from 'antd';
-import { CloudUploadOutlined, EllipsisOutlined, FireOutlined, PaperClipOutlined, PlusOutlined, ShareAltOutlined } from '@ant-design/icons';
+import { EllipsisOutlined, FireOutlined, PaperClipOutlined, PlusOutlined, ShareAltOutlined } from '@ant-design/icons';
 
 const useStyle = createStyles(({ token, css }) => ({
   layout: css`
@@ -91,6 +88,7 @@ const Independent = () => {
     { key: '0', label: '我的对话', messages: [] }
   ]);
   const [activeKey, setActiveKey] = useState('0');
+  // eslint-disable-next-line
   const [attachedFiles, setAttachedFiles] = useState([]);
 
   const apiUrl = 'https://open.hunyuan.tencent.com/openapi/v1/agent/chat/completions';
@@ -98,15 +96,57 @@ const Independent = () => {
   const token = 'ae4TeTBiCIDSjebEEivMW2QikiuV5eck';
   const userId = '18636502087';
 
-  // 重构后的消息处理函数
+  // 安全的消息流处理函数
+  // 修改后的流式更新函数
+const handleStreamUpdate = async (aiMsgId, aiMessage) => {
+  const CHUNK_SIZE = 5; // 每5个字符更新一次
+  const BASE_DELAY = 30; // 固定间隔时间
+
+  let currentContent = '';
+  const chars = aiMessage.split('');
+  let chunkBuffer = [];
+  
+  const updateContent = () => {
+    currentContent += chunkBuffer.join('');
+    chunkBuffer = [];
+    setMessages(prev => 
+      prev.map(msg => 
+        msg.id === aiMsgId 
+          ? { ...msg, content: currentContent, status: 'success' }
+          : msg
+      )
+    );
+  };
+
+  for (let i = 0; i < chars.length; i++) {
+    chunkBuffer.push(chars[i]);
+    
+    if (chunkBuffer.length >= CHUNK_SIZE || i === chars.length - 1) {
+      await new Promise(resolve => 
+        setTimeout(() => {
+          updateContent();
+          resolve();
+        }, BASE_DELAY)
+      );
+    }
+  }
+
+  // 最终同步保证完整性
+  setMessages(prev => 
+    prev.map(msg => 
+      msg.id === aiMsgId 
+        ? { ...msg, content: aiMessage, status: 'success' }
+        : msg
+    )
+  );
+};
+
   const handleSendMessage = async (message) => {
     if (!message) return;
 
-    // 生成唯一ID用于追踪消息
     const userMsgId = Date.now();
     const aiMsgId = userMsgId + 1;
 
-    // 添加用户消息（仅一次）
     setMessages(prev => [
       ...prev,
       {
@@ -115,12 +155,7 @@ const Independent = () => {
         content: message,
         status: 'success',
         timestamp: Date.now()
-      }
-    ]);
-
-    // 添加AI的loading状态消息
-    setMessages(prev => [
-      ...prev,
+      },
       {
         id: aiMsgId,
         role: 'assistant',
@@ -154,22 +189,8 @@ const Independent = () => {
 
       const data = await response.json();
       const aiMessage = data?.choices?.[0]?.message?.content || '';
-
-      // 使用 useState 的 setMessages 逐步更新内容
-      let currentContent = '';
-      for (const char of aiMessage) {
-        currentContent += char;
-
-        // 更新消息内容
-        setMessages(prev => 
-          prev.map(msg => 
-            msg.id === aiMsgId 
-              ? { ...msg, content: currentContent, status: 'success' }
-              : msg
-          )
-        );
-        await new Promise(resolve => setTimeout(resolve, 50));  // 每次更新延时
-      }
+      
+      await handleStreamUpdate(aiMsgId, aiMessage);
     } catch (error) {
       setMessages(prev => 
         prev.map(msg => 
@@ -181,11 +202,11 @@ const Independent = () => {
     }
   };
 
-  // 对话切换逻辑
+  // 修复依赖项
   useEffect(() => {
     const currentConv = conversations.find(c => c.key === activeKey);
     setMessages(currentConv?.messages || []);
-  }, [activeKey]);
+  }, [activeKey, conversations]);
 
   const handleNewConversation = () => {
     const newKey = String(conversations.length);
@@ -196,7 +217,6 @@ const Independent = () => {
     setActiveKey(newKey);
   };
 
-  // 消息渲染优化
   const renderMessages = () => {
     if (messages.length === 0) {
       return (
@@ -230,8 +250,8 @@ const Independent = () => {
           className: msg.status === 'error' ? 'error-message' : '',
         }))}
         roles={{
-          user: { placement: 'end' },  // 用户消息在右侧
-          assistant: { placement: 'start' }  // AI消息在左侧
+          user: { placement: 'end' },
+          assistant: { placement: 'start' }
         }}
       />
     );
