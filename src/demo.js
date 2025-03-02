@@ -1,3 +1,5 @@
+/* eslint-disable no-unused-vars */
+
 import { Badge } from 'antd';
 
 import React, { useEffect, useState } from 'react';
