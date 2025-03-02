@@ -155,10 +155,12 @@ const Independent = () => {
       const data = await response.json();
       const aiMessage = data?.choices?.[0]?.message?.content || '';
 
-      // 流式更新效果
+      // 使用 useState 的 setMessages 逐步更新内容
       let currentContent = '';
       for (const char of aiMessage) {
         currentContent += char;
+
+        // 更新消息内容
         setMessages(prev => 
           prev.map(msg => 
             msg.id === aiMsgId 
@@ -166,7 +168,7 @@ const Independent = () => {
               : msg
           )
         );
-        await new Promise(resolve => setTimeout(resolve, 50));
+        await new Promise(resolve => setTimeout(resolve, 50));  // 每次更新延时
       }
     } catch (error) {
       setMessages(prev => 
